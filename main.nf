@@ -13,6 +13,7 @@ log.info """\
     index genome    : ${params.index_genome}
     qsr truth vcfs  : ${params.qsrVcfs}
     output directory: ${params.outdir}
+    fastp           : ${params.fastp}
     fastqc          : ${params.fastqc}
     aligner         : ${params.aligner}
     variant caller  : ${params.variant_caller}
@@ -29,6 +30,9 @@ if (params.index_genome) {
 }
 if (params.fastqc) {
     include { FASTQC } from './modules/FASTQC'
+}
+if (params.fastp) {
+    include { fastp } from './modules/fastp'
 }
 include { sortBam } from './modules/sortBam'
 include { markDuplicates } from './modules/markDuplicates'
@@ -96,6 +100,11 @@ workflow {
     // Run FASTQC on read pairs
     if (params.fastqc) {
         FASTQC(read_pairs_ch)
+    }
+
+     // Run fastp on read pairs
+    if (params.fastp) {
+        fastp(read_pairs_ch)
     }
 
     // Align reads to the indexed genome
