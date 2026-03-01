@@ -24,49 +24,25 @@ log.info """\
     ============================================
 """.stripIndent()
 
-// Conditionally include modules
-if (params.index_genome) {
-    include { indexGenome } from './modules/indexGenome'
-}
-if (params.fastqc) {
-    include { FASTQC } from './modules/FASTQC'
-}
-if (params.fastp) {
-    include { fastp } from './modules/fastp'
-}
+// Include modules (DSL2 requires includes at top-level, not inside if/else)
+include { indexGenome } from './modules/indexGenome'
+include { FASTQC } from './modules/FASTQC'
+include { fastp } from './modules/fastp'
 include { sortBam } from './modules/sortBam'
 include { markDuplicates } from './modules/markDuplicates'
 include { indexBam } from './modules/indexBam'
-if (params.bqsr) {
-    include { baseRecalibrator } from './modules/BQSR'
-}
+include { baseRecalibrator } from './modules/BQSR'
 include { combineGVCFs } from './modules/processGVCFs'
 include { genotypeGVCFs } from './modules/processGVCFs'
-if (params.variant_recalibration) {
-    include { variantRecalibrator } from './modules/variantRecalibrator'
-} else {
-    include { filterVCF } from './modules/filterVCF'
-}
-if (params.identity_analysis) {
-    include { identityAnalysis } from './modules/identityAnalysis'
-}
-if (params.aligner == 'bwa-mem') {
-    include { alignReadsBwaMem } from './modules/alignReadsBwaMem'
-} else if (params.aligner == 'bwa-aln') {
-    include { alignReadsBwaAln } from './modules/alignReadsBwaAln'
-} else {
-    error "Unsupported aligner: ${params.aligner}. Please specify 'bwa-mem' or 'bwa-aln'."
-}
-if (params.variant_caller == 'haplotype-caller') {
-    include { haplotypeCaller } from './modules/haplotypeCaller'
-} else {
-    error "Unsupported variant caller: ${params.variant_caller}. Please specify 'haplotype-caller'."
-}
-
-if (params.degraded_dna) {
-    include { mapDamage2 } from './modules/mapDamage'
-    include { indexMapDamageBam } from './modules/indexBam'
-}
+include { variantRecalibrator } from './modules/variantRecalibrator'
+include { filterVCF } from './modules/filterVCF'
+include { identityAnalysis } from './modules/identityAnalysis'
+include { alignReadsBwaMem } from './modules/alignReadsBwaMem'
+include { alignReadsBwaAln } from './modules/alignReadsBwaAln'
+include { indexGenomeBowtie2; alignReadsBowtie2 } from './modules/alignReadsBowtie2'
+include { haplotypeCaller } from './modules/haplotypeCaller'
+include { mapDamage2 } from './modules/mapDamage'
+include { indexMapDamageBam } from './modules/indexBam'
 
 workflow {
 
@@ -112,6 +88,9 @@ workflow {
         align_ch = alignReadsBwaMem(read_pairs_ch, indexed_genome_ch.collect())
     } else if (params.aligner == 'bwa-aln') {
         align_ch = alignReadsBwaAln(read_pairs_ch, indexed_genome_ch.collect())
+    } else if (params.aligner == 'bowtie2') {
+        bt2_index_ch = indexGenomeBowtie2(file(params.genome_file))
+        align_ch = alignReadsBowtie2(read_pairs_ch, bt2_index_ch)
     }
 
     // Sort BAM files
