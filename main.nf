@@ -102,16 +102,19 @@ workflow {
         FASTQC(read_pairs_ch)
     }
 
-     // Run fastp on read pairs
+    // Run fastp on read pairs and capture trimmed reads
     if (params.fastp) {
-        fastp(read_pairs_ch)
+        fastp_out = fastp(read_pairs_ch)
+        align_input_ch = fastp_out[0]  // first output = tuple(sample_id, R1, R2)
+    } else {
+        align_input_ch = read_pairs_ch  // fallback to untrimmed reads
     }
 
-    // Align reads to the indexed genome
+    // Align reads using trimmed or untrimmed reads depending on fastp param
     if (params.aligner == 'bwa-mem') {
-        align_ch = alignReadsBwaMem(read_pairs_ch, indexed_genome_ch.collect())
+        align_ch = alignReadsBwaMem(align_input_ch, indexed_genome_ch.collect())
     } else if (params.aligner == 'bwa-aln') {
-        align_ch = alignReadsBwaAln(read_pairs_ch, indexed_genome_ch.collect())
+        align_ch = alignReadsBwaAln(align_input_ch, indexed_genome_ch.collect())
     }
 
     // Sort BAM files
