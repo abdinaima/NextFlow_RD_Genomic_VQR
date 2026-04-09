@@ -2,45 +2,42 @@
  * Run fastp trimming tool on the read fastq files
  */
 
-process fastp { // Define the fastp process 
+process fastp {
 
-    container 'swglh/fastp:1.0.1' // Use the fastp container with version explicitly stated
+    container 'swglh/fastp:1.0.1'
 
-    tag "$sample_id" // Tag jobs with sample ID for traceability
+    tag "$sample_id"
 
-    publishDir("$params.outdir/fastp", mode: "copy")  // Output directory for fastp results
+    publishDir("$params.outdir/fastp", mode: "copy")
 
     input:
-    tuple val(sample_id), path(reads) // Input: sample ID and reads (array of files). Reads is a tuple of paths for paired-end reads
+    tuple val(sample_id), path(reads)
 
     output:
-    path "fastp_${sample_id}_logs/*"  // Output: This process will output all files to the path/directory that's named after the sample's log directory
+    tuple val(sample_id), path("fastp_${sample_id}_logs/fastp_${sample_id}.trimmed.R1.fastq.gz"), path("fastp_${sample_id}_logs/fastp_${sample_id}.trimmed.R2.fastq.gz")  // trimmed reads passed forward
+    path "fastp_${sample_id}_logs/*.{html,json}"  // logs published to outdir
 
     script:
     """
-    echo "Running fastp"                                        # Print status message
-    mkdir -p fastp_${sample_id}_logs                            # Create output directory for this sample
+    echo "Running fastp"
+    mkdir -p fastp_${sample_id}_logs
 
-    # Check the number of files in reads and run fastp accordingly
-    if [ -f "${reads[0]}" ] && [ -f "${reads[1]}" ]; then                                # If both R1 and R2 exist (paired-end)
+    if [ -f "${reads[0]}" ] && [ -f "${reads[1]}" ]; then
         fastp -i ${reads[0]} -I ${reads[1]} \
             -o fastp_${sample_id}_logs/fastp_${sample_id}.trimmed.R1.fastq.gz \
             -O fastp_${sample_id}_logs/fastp_${sample_id}.trimmed.R2.fastq.gz \
             -h fastp_${sample_id}_logs/fastp_${sample_id}.html \
             -j fastp_${sample_id}_logs/fastp_${sample_id}.json
-    elif [ -f "${reads[0]}" ]; then                                                      # If only R1 exists (single-end)
+    elif [ -f "${reads[0]}" ]; then
         fastp -i ${reads[0]} \
             -o fastp_${sample_id}_logs/fastp_${sample_id}.trimmed.R1.fastq.gz \
             -h fastp_${sample_id}_logs/fastp_${sample_id}.html \
             -j fastp_${sample_id}_logs/fastp_${sample_id}.json
-    else                                                                                 # If no valid reads found
-        echo "No valid read files found for sample ${sample_id}"                         # Print error
-        exit 1                                                                           # Exit with error
+    else
+        echo "No valid read files found for sample ${sample_id}"
+        exit 1
     fi
 
-    echo "fastp Complete"                                                                # Print completion message
+    echo "fastp Complete"
     """
 }
-
-
-
