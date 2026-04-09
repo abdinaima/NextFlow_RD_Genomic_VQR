@@ -40,8 +40,11 @@ include { indexBam } from './modules/indexBam'
 if (params.bqsr) {
     include { baseRecalibrator } from './modules/BQSR'
 }
-include { combineGVCFs } from './modules/processGVCFs'
-include { genotypeGVCFs } from './modules/processGVCFs'
+// Only include GATK GVCF modules if NOT using octopus
+if (params.variant_caller != 'octopus') {
+    include { combineGVCFs } from './modules/processGVCFs'
+    include { genotypeGVCFs } from './modules/processGVCFs'
+}
 if (params.variant_recalibration) {
     include { variantRecalibrator } from './modules/variantRecalibrator'
 } else {
@@ -55,12 +58,14 @@ if (params.aligner == 'bwa-mem') {
 } else if (params.aligner == 'bwa-aln') {
     include { alignReadsBwaAln } from './modules/alignReadsBwaAln'
 } else if (params.aligner == 'bowtie2') {
-    include { alignReadsBowtie2 } from './modules/alignReadsBowtie2'  
+    include { alignReadsBowtie2 } from './modules/alignReadsBowtie2'
 }
 if (params.variant_caller == 'haplotype-caller') {
     include { haplotypeCaller } from './modules/haplotypeCaller'
+} else if (params.variant_caller == 'octopus') {
+    include { octopusCaller; indexOctopusVCF } from './modules/octopusCaller'  
 } else {
-    error "Unsupported variant caller: ${params.variant_caller}. Please specify 'haplotype-caller'."
+    error "Unsupported variant caller: ${params.variant_caller}. Please specify 'haplotype-caller' or 'octopus'."
 }
 if (params.degraded_dna) {
     include { mapDamage2 } from './modules/mapDamage'
@@ -114,7 +119,7 @@ workflow {
     } else if (params.aligner == 'bwa-aln') {
         align_ch = alignReadsBwaAln(align_input_ch, indexed_genome_ch.collect())
     } else if (params.aligner == 'bowtie2') {
-        bt2_index_ch = Channel.fromPath(params.genome_index_files).collect()  
+        bt2_index_ch = Channel.fromPath(params.genome_index_files).collect()
         align_ch = alignReadsBowtie2(align_input_ch, bt2_index_ch)
     }
 
@@ -147,25 +152,27 @@ workflow {
         bqsr_ch = mapDamage_ch
     }
 
-    // Run HaplotypeCaller on BQSR files
+    // Run variant caller
     if (params.variant_caller == "haplotype-caller") {
+        // GATK HaplotypeCaller GVCF workflow
         gvcf_ch = haplotypeCaller(bqsr_ch, indexed_genome_ch.collect()).collect()
+
+        all_gvcf_ch = gvcf_ch
+            .collect { listOfTuples ->
+                def sample_ids = listOfTuples.collate(3).collect { it[0] }
+                def vcf_files = listOfTuples.collate(3).collect { it[1] }
+                def vcf_index_files = listOfTuples.collate(3).collect { it[2] }
+                return tuple(sample_ids, vcf_files, vcf_index_files)
+            }
+
+        combined_gvcf_ch = combineGVCFs(all_gvcf_ch, indexed_genome_ch.collect())
+        final_vcf_ch = genotypeGVCFs(combined_gvcf_ch, indexed_genome_ch.collect())
+
+    } else if (params.variant_caller == "octopus") {
+        // Octopus produces final VCF directly - bypass GATK GVCF workflow
+        octopus_ch = octopusCaller(bqsr_ch, indexed_genome_ch.collect())  // call octopus
+        final_vcf_ch = indexOctopusVCF(octopus_ch)                        
     }
-
-    // Now we map to create separate lists for sample IDs, VCF files, and index files
-    all_gvcf_ch = gvcf_ch
-        .collect { listOfTuples ->
-            def sample_ids = listOfTuples.collate(3).collect { it[0] }
-            def vcf_files = listOfTuples.collate(3).collect { it[1] }
-            def vcf_index_files = listOfTuples.collate(3).collect { it[2] }
-            return tuple(sample_ids, vcf_files, vcf_index_files)
-        }
-
-    // Combine GVCFs
-    combined_gvcf_ch = combineGVCFs(all_gvcf_ch, indexed_genome_ch.collect())
-
-    // Run GenotypeGVCFs
-    final_vcf_ch = genotypeGVCFs(combined_gvcf_ch, indexed_genome_ch.collect())
 
     // Conditionally apply variant recalibration or filtering
     if (params.variant_recalibration) {
@@ -188,7 +195,7 @@ workflow {
             .collect()
         filtered_vcf_ch = variantRecalibrator(final_vcf_ch, knownSitesArgs_ch, indexed_genome_ch.collect(), qsrc_vcf_ch.collect())
     } else {
-        filtered_vcf_ch = filterVCF(final_vcf_ch, indexed_genome_ch.collect())
+        filtered_vcf_ch = filterVCF(final_vcf_ch, indexed_genome_ch.collect())  
     }
 
     // Conditionally run identityAnalysis if identity_analysis is true

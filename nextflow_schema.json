@@ -51,6 +51,12 @@
                     "default": "bwa-mem",
                     "enum": ["bwa-mem", "bwa-aln", "bowtie2"]
                 },
+                "variant_caller": {
+                    "type": "string",
+                    "description": "Variant caller to use (haplotype-caller or octopus)",
+                    "default": "haplotype-caller",
+                    "enum": ["haplotype-caller", "octopus"]
+                },
                 "fastqc": {
                     "type": "boolean",
                     "description": "Flag to indicate if FASTQC should be performed",
@@ -96,6 +102,7 @@
                 "qsrVcfs",
                 "outdir",
                 "aligner",
+                "variant_caller",
                 "bqsr",
                 "fastqc",
                 "fastp",
