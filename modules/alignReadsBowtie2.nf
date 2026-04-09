@@ -16,7 +16,7 @@ process alignReadsBowtie2 {
 
     input:
     tuple val(sample_id), path(reads)
-    path bt2Files  // ✅ just the index files, no prefix needed
+    path bt2Files  
 
     output:
     tuple val(sample_id), path("${sample_id}.bam")
