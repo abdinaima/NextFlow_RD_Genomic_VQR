@@ -26,7 +26,7 @@ process alignReadsBowtie2 {
     echo "Running Bowtie2 Alignment for Reads"
 
     # Find index prefix from bt2 files
-    INDEX=\$(ls *.1.bt2 | sed 's/\\.1\\.bt2\$//')
+    INDEX=\$(ls *.1.bt2 | grep -v 'rev' | sed 's/\\.1\\.bt2\$//')
     echo "Index prefix: \$INDEX"
 
     if [ -f "${reads[0]}" ] && [ -f "${reads[1]}" ]; then
