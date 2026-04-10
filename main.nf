@@ -55,7 +55,7 @@ if (params.aligner == 'bwa-mem') {
 } else if (params.aligner == 'bwa-aln') {
     include { alignReadsBwaAln } from './modules/alignReadsBwaAln'
 } else if (params.aligner == 'bowtie2') {
-    include { alignReadsBowtie2 } from './modules/alignReadsBowtie2'  
+    include { alignReadsBowtie2 } from './modules/alignReadsBowtie2'
 }
 if (params.variant_caller == 'haplotype-caller') {
     include { haplotypeCaller } from './modules/haplotypeCaller'
@@ -76,6 +76,9 @@ workflow {
     else {
         indexed_genome_ch = Channel.fromPath(params.genome_index_files)
     }
+
+    // Always create a separate fasta channel for processes that need it
+    genome_fasta_ch = Channel.fromPath(params.genome_file)  // separate fasta channel
 
     // Create qsrc_vcf_ch channel
     qsrc_vcf_ch = Channel.fromPath(params.qsrVcfs)
@@ -103,9 +106,9 @@ workflow {
     // Run fastp on read pairs and capture trimmed reads
     if (params.fastp) {
         fastp_out = fastp(read_pairs_ch)
-        align_input_ch = fastp_out[0]  
+        align_input_ch = fastp_out[0]  // trimmed reads passed forward
     } else {
-        align_input_ch = read_pairs_ch  
+        align_input_ch = read_pairs_ch  // fallback to untrimmed reads
     }
 
     // Align reads using trimmed or untrimmed reads depending on fastp param
@@ -114,7 +117,7 @@ workflow {
     } else if (params.aligner == 'bwa-aln') {
         align_ch = alignReadsBwaAln(align_input_ch, indexed_genome_ch.collect())
     } else if (params.aligner == 'bowtie2') {
-        bt2_index_ch = Channel.fromPath(params.genome_index_files).collect()  
+        bt2_index_ch = Channel.fromPath(params.genome_index_files).collect()
         align_ch = alignReadsBowtie2(align_input_ch, bt2_index_ch)
     }
 
@@ -142,14 +145,15 @@ workflow {
         .collect()
 
     if (params.bqsr) {
-        bqsr_ch = baseRecalibrator(mapDamage_ch, knownSites_ch, indexed_genome_ch.collect(), qsrc_vcf_ch.collect())
+        //  use genome_fasta_ch instead of indexed_genome_ch for BQSR
+        bqsr_ch = baseRecalibrator(mapDamage_ch, knownSites_ch, genome_fasta_ch.collect(), qsrc_vcf_ch.collect())
     } else {
         bqsr_ch = mapDamage_ch
     }
 
     // Run HaplotypeCaller on BQSR files
     if (params.variant_caller == "haplotype-caller") {
-        gvcf_ch = haplotypeCaller(bqsr_ch, indexed_genome_ch.collect()).collect()
+        gvcf_ch = haplotypeCaller(bqsr_ch, genome_fasta_ch.collect()).collect()  // use genome_fasta_ch
     }
 
     // Now we map to create separate lists for sample IDs, VCF files, and index files
@@ -162,10 +166,10 @@ workflow {
         }
 
     // Combine GVCFs
-    combined_gvcf_ch = combineGVCFs(all_gvcf_ch, indexed_genome_ch.collect())
+    combined_gvcf_ch = combineGVCFs(all_gvcf_ch, genome_fasta_ch.collect())  // use genome_fasta_ch
 
     // Run GenotypeGVCFs
-    final_vcf_ch = genotypeGVCFs(combined_gvcf_ch, indexed_genome_ch.collect())
+    final_vcf_ch = genotypeGVCFs(combined_gvcf_ch, genome_fasta_ch.collect())  // use genome_fasta_ch
 
     // Conditionally apply variant recalibration or filtering
     if (params.variant_recalibration) {
@@ -186,9 +190,9 @@ workflow {
                 return "--resource:${baseName},${resourceArgs} ${file.getName()}"
             }
             .collect()
-        filtered_vcf_ch = variantRecalibrator(final_vcf_ch, knownSitesArgs_ch, indexed_genome_ch.collect(), qsrc_vcf_ch.collect())
+        filtered_vcf_ch = variantRecalibrator(final_vcf_ch, knownSitesArgs_ch, genome_fasta_ch.collect(), qsrc_vcf_ch.collect()) 
     } else {
-        filtered_vcf_ch = filterVCF(final_vcf_ch, indexed_genome_ch.collect())
+        filtered_vcf_ch = filterVCF(final_vcf_ch, genome_fasta_ch.collect())  
     }
 
     // Conditionally run identityAnalysis if identity_analysis is true
