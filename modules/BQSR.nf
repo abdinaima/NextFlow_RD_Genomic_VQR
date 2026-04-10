@@ -1,25 +1,4 @@
-process baseRecalibrator {
-    if (params.platform == 'local') {
-        label 'process_low'
-    } else if (params.platform == 'cloud') {
-        label 'process_medium'
-    }
-    container 'broadinstitute/gatk:4.1.4.0'
-    tag "$bamFile"
-    publishDir("$params.outdir/BAM", mode: "copy")
-    
-    input:
-    tuple val(sample_id), file(bamFile), file(baiFile)
-    val knownSites
-    path indexFiles  // this receives genome_fasta_ch with fasta + fai + dict
-    path qsrcVcfFiles
-
-    output:
-    tuple val(sample_id), file("${bamFile.baseName}_recalibrated.bam"), file("${bamFile.baseName}_recalibrated.bai")
-
-    script:
-    def knownSitesArgs = knownSites.join(' ')
-    """
+"""
     echo "Running BQSR"
 
     # Find fasta using find instead of basename
@@ -62,4 +41,3 @@ process baseRecalibrator {
 
     echo "BQSR Complete"
     """
-}
