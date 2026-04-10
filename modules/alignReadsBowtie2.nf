@@ -15,7 +15,7 @@ process alignReadsBowtie2 {
     tag "$sample_id"
 
     input:
-    tuple val(sample_id), path(reads)
+    tuple val(sample_id), path(read1), path(read2)  // matches fastp output format
     path bt2Files  
 
     output:
@@ -29,22 +29,22 @@ process alignReadsBowtie2 {
     INDEX=\$(ls *.1.bt2 | grep -v 'rev' | sed 's/\\.1\\.bt2\$//')
     echo "Index prefix: \$INDEX"
 
-    if [ -f "${reads[0]}" ] && [ -f "${reads[1]}" ]; then
+    if [ -f "${read1}" ] && [ -f "${read2}" ]; then
         bowtie2 --no-unal -p ${task.cpus} -x "\$INDEX" \
-        -1 "${reads[0]}" -2 "${reads[1]}" -S - \
+        -1 "${read1}" -2 "${read2}" -S - \
         | samtools view -b - \
         | samtools addreplacerg -r "@RG\\tID:${sample_id}\\tSM:${sample_id}\\tPL:illumina" - \
         > "${sample_id}.bam"
 
-    elif [ -f "${reads[0]}" ]; then
+    elif [ -f "${read1}" ]; then
         bowtie2 --no-unal -p ${task.cpus} -x "\$INDEX" \
-        -U "${reads[0]}" -S - \
+        -U "${read1}" -S - \
         | samtools view -b - \
         | samtools addreplacerg -r "@RG\\tID:${sample_id}\\tSM:${sample_id}\\tPL:illumina" - \
         > "${sample_id}.bam"
 
     else
-        echo "Error: Read file ${reads[0]} does not exist for sample ${sample_id}."
+        echo "Error: Read file ${read1} does not exist for sample ${sample_id}."
         exit 1
     fi
 
