@@ -1,21 +1,17 @@
 process baseRecalibrator {
-
     if (params.platform == 'local') {
         label 'process_low'
     } else if (params.platform == 'cloud') {
         label 'process_medium'
     }
     container 'broadinstitute/gatk:4.1.4.0'
-
     tag "$bamFile"
-
-    // Publish BQSR BAM files to the specified directory
     publishDir("$params.outdir/BAM", mode: "copy")
-
+    
     input:
     tuple val(sample_id), file(bamFile), file(baiFile)
     val knownSites
-    path indexFiles
+    path indexFiles  // this receives genome_fasta_ch with fasta + fai + dict
     path qsrcVcfFiles
 
     output:
@@ -26,13 +22,21 @@ process baseRecalibrator {
     """
     echo "Running BQSR"
 
-    if [[ -n params.genome_file ]]; then
-        genomeFasta=\$(basename ${params.genome_file})
-    else
-        genomeFasta=\$(find -L . -name '*.fasta')
+    # Find fasta using find instead of basename
+    genomeFasta=\$(find -L . -name '*.fasta' | head -1)
+    echo "Genome File: \${genomeFasta}"
+
+    # Generate fai index if it doesn't exist
+    if [ ! -f "\${genomeFasta}.fai" ]; then
+        echo "Generating fasta index..."
+        samtools faidx "\${genomeFasta}"
     fi
 
-    echo "Genome File: \${genomeFasta}"
+    # Generate dict if it doesn't exist
+    if [ ! -f "\${genomeFasta%.*}.dict" ]; then
+        echo "Generating sequence dictionary..."
+        gatk CreateSequenceDictionary -R "\${genomeFasta}"
+    fi
 
     # Rename the dictionary file to the expected name if it exists
     if [[ -e "\${genomeFasta}.dict" ]]; then
