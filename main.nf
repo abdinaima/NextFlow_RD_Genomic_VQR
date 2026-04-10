@@ -77,8 +77,8 @@ workflow {
         indexed_genome_ch = Channel.fromPath(params.genome_index_files)
     }
 
-    // Always create a separate fasta channel for processes that need it
-    genome_fasta_ch = Channel.fromPath(params.genome_file)  // separate fasta channel
+    //  Stage fasta and ALL its index files together
+    genome_fasta_ch = Channel.fromPath("${params.genome_file}*").collect()
 
     // Create qsrc_vcf_ch channel
     qsrc_vcf_ch = Channel.fromPath(params.qsrVcfs)
@@ -145,15 +145,15 @@ workflow {
         .collect()
 
     if (params.bqsr) {
-        //  use genome_fasta_ch instead of indexed_genome_ch for BQSR
-        bqsr_ch = baseRecalibrator(mapDamage_ch, knownSites_ch, genome_fasta_ch.collect(), qsrc_vcf_ch.collect())
+        // genome_fasta_ch already collected, includes fasta + fai + dict
+        bqsr_ch = baseRecalibrator(mapDamage_ch, knownSites_ch, genome_fasta_ch, qsrc_vcf_ch.collect())
     } else {
         bqsr_ch = mapDamage_ch
     }
 
     // Run HaplotypeCaller on BQSR files
     if (params.variant_caller == "haplotype-caller") {
-        gvcf_ch = haplotypeCaller(bqsr_ch, genome_fasta_ch.collect()).collect()  // use genome_fasta_ch
+        gvcf_ch = haplotypeCaller(bqsr_ch, genome_fasta_ch).collect()  // 
     }
 
     // Now we map to create separate lists for sample IDs, VCF files, and index files
@@ -166,10 +166,10 @@ workflow {
         }
 
     // Combine GVCFs
-    combined_gvcf_ch = combineGVCFs(all_gvcf_ch, genome_fasta_ch.collect())  // use genome_fasta_ch
+    combined_gvcf_ch = combineGVCFs(all_gvcf_ch, genome_fasta_ch)  
 
     // Run GenotypeGVCFs
-    final_vcf_ch = genotypeGVCFs(combined_gvcf_ch, genome_fasta_ch.collect())  // use genome_fasta_ch
+    final_vcf_ch = genotypeGVCFs(combined_gvcf_ch, genome_fasta_ch)  
 
     // Conditionally apply variant recalibration or filtering
     if (params.variant_recalibration) {
@@ -190,9 +190,9 @@ workflow {
                 return "--resource:${baseName},${resourceArgs} ${file.getName()}"
             }
             .collect()
-        filtered_vcf_ch = variantRecalibrator(final_vcf_ch, knownSitesArgs_ch, genome_fasta_ch.collect(), qsrc_vcf_ch.collect()) 
+        filtered_vcf_ch = variantRecalibrator(final_vcf_ch, knownSitesArgs_ch, genome_fasta_ch, qsrc_vcf_ch.collect())  
     } else {
-        filtered_vcf_ch = filterVCF(final_vcf_ch, genome_fasta_ch.collect())  
+        filtered_vcf_ch = filterVCF(final_vcf_ch, genome_fasta_ch)  
     }
 
     // Conditionally run identityAnalysis if identity_analysis is true
