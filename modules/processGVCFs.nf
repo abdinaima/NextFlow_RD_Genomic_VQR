@@ -5,30 +5,37 @@ process combineGVCFs {
         label 'process_medium'
     }
     container 'variantvalidator/gatk4:4.3.0.0'
-    tag "${sample_ids.join('_')}" // Add a tag based on the sample IDs
-
+    tag "${sample_ids.join('_')}"
     input:
     tuple val(sample_ids), path(gvcf_files), path(gvcf_index_files)
     path indexFiles
-
     output:
     tuple val("${sample_ids.join('_')}"), file("*_combined.vcf"), file("*_combined.vcf.idx")
-
     script:
     def merged_sample_id = "${sample_ids.join('_')}"
     def gvcf_files_args = gvcf_files.collect { file -> "-V ${file}" }.join(' ')
-
     """
     echo "Combining GVCFs for samples: ${gvcf_files.collect { it.baseName }.join(', ')}"
+    genomeFasta="\$(find -L . -name '*.fasta' | head -1)"
 
-    genomeFasta="\$(find -L . -name '*.fasta')"
+    # Generate fai index if it doesn't exist
+    if [ ! -f "\${genomeFasta}.fai" ]; then
+        echo "Generating fasta index..."
+        samtools faidx "\${genomeFasta}"
+    fi
 
-    # Ensure dictionary exists
+    # Generate dict if it doesn't exist
+    if [ ! -f "\${genomeFasta%.*}.dict" ]; then
+        echo "Generating sequence dictionary..."
+        gatk CreateSequenceDictionary -R "\${genomeFasta}"
+    fi
+
+    # Rename the dictionary file to the expected name if it exists
     if [[ -e "\${genomeFasta}.dict" ]]; then
         mv "\${genomeFasta}.dict" "\${genomeFasta%.*}.dict"
     fi
 
-    gatk CombineGVCFs -R "\${genomeFasta}"\
+    gatk CombineGVCFs -R "\${genomeFasta}" \
         ${gvcf_files_args} \
         -O ${merged_sample_id}_combined.vcf
     """
@@ -42,27 +49,31 @@ process genotypeGVCFs {
     }
     container 'variantvalidator/gatk4:4.3.0.0'
     tag "$combined_sample_id"
-
     input:
     tuple val(combined_sample_id), file(combined_gvcf), file(combined_gvcf_idx)
     path indexFiles
-
     output:
     tuple val(combined_sample_id), file("*_genotyped.vcf"), file("*_genotyped.vcf.idx")
-
     script:
     def merged_sample_id = combined_gvcf.baseName
-
     """
     echo "Genotyping combined GVCF: ${combined_gvcf.baseName}"
 
-    if [[ -n ${params.genome_file} ]]; then
-        genomeFasta=\$(basename ${params.genome_file})
-    else
-        genomeFasta=\$(find -L . -name '*.fasta')
+    # Find fasta using find instead of basename
+    genomeFasta=\$(find -L . -name '*.fasta' | head -1)
+    echo "Genome File: \${genomeFasta}"
+
+    # Generate fai index if it doesn't exist
+    if [ ! -f "\${genomeFasta}.fai" ]; then
+        echo "Generating fasta index..."
+        samtools faidx "\${genomeFasta}"
     fi
 
-    echo "Genome File: \${genomeFasta}"
+    # Generate dict if it doesn't exist
+    if [ ! -f "\${genomeFasta%.*}.dict" ]; then
+        echo "Generating sequence dictionary..."
+        gatk CreateSequenceDictionary -R "\${genomeFasta}"
+    fi
 
     # Rename the dictionary file to the expected name if it exists
     if [[ -e "\${genomeFasta}.dict" ]]; then
@@ -72,6 +83,5 @@ process genotypeGVCFs {
     gatk GenotypeGVCFs -R "\${genomeFasta}" \
         -V ${combined_gvcf} \
         -O ${merged_sample_id}_genotyped.vcf
-
     """
 }
