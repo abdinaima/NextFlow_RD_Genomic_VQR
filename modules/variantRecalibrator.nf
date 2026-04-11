@@ -27,13 +27,21 @@ process variantRecalibrator {
     """
     echo "Running VQSR"
 
-    if [[ -n "${params.genome_file}" ]]; then
-        genomeFasta=\$(basename ${params.genome_file})
-    else
-        genomeFasta=\$(find -L . -name '*.fasta')
+    # Find fasta using find instead of basename
+    genomeFasta=\$(find -L . -name '*.fasta' | head -1)
+    echo "Genome File: \${genomeFasta}"
+
+    # Generate fai index if it doesn't exist
+    if [ ! -f "\${genomeFasta}.fai" ]; then
+        echo "Generating fasta index..."
+        samtools faidx "\${genomeFasta}"
     fi
 
-    echo "Genome File: \${genomeFasta}"
+    # Generate dict if it doesn't exist
+    if [ ! -f "\${genomeFasta%.*}.dict" ]; then
+        echo "Generating sequence dictionary..."
+        gatk CreateSequenceDictionary -R "\${genomeFasta}"
+    fi
 
     if [[ -e "\${genomeFasta}.dict" ]]; then
         mv "\${genomeFasta}.dict" "\${genomeFasta%.*}.dict"
@@ -41,7 +49,6 @@ process variantRecalibrator {
 
     if ${degradedDna}; then
         echo "Running VQSR for degraded DNA (1x coverage)"
-        # relaxed parameters for SNPs and INDELs
         gatk VariantRecalibrator \
             -R "\${genomeFasta}" \
             -V ${vcf} \
@@ -50,7 +57,6 @@ process variantRecalibrator {
             -mode SNP \
             -tranches-file ${vcf.baseName}.recalibrated_SNP.tranches \
             -O ${vcf.baseName}.recalibrated_SNP.recal
-        # Apply VQSR for SNPs
         gatk ApplyVQSR \
             -R "\${genomeFasta}" \
             -V ${vcf} \
@@ -59,7 +65,6 @@ process variantRecalibrator {
             -recal-file ${vcf.baseName}.recalibrated_SNP.recal \
             -mode SNP \
             -O ${vcf.baseName}.output_SNP.vcf
-        # relaxed parameters for INDELs
         gatk VariantRecalibrator \
             -R "\${genomeFasta}" \
             -V ${vcf} \
@@ -68,7 +73,6 @@ process variantRecalibrator {
             -mode INDEL \
             -tranches-file ${vcf.baseName}.recalibrated_INDEL.tranches \
             -O ${vcf.baseName}.recalibrated_INDEL.recal
-        # Apply VQSR for INDELs
         gatk ApplyVQSR \
             -R "\${genomeFasta}" \
             -V ${vcf} \
@@ -79,7 +83,6 @@ process variantRecalibrator {
             -O ${vcf.baseName}.output_INDEL.vcf
     else
         echo "Running VQSR for standard DNA (10x+ coverage)"
-        # stricter parameters for SNPs and INDELs
         gatk VariantRecalibrator \
             -R "\${genomeFasta}" \
             -V ${vcf} \
@@ -88,7 +91,6 @@ process variantRecalibrator {
             -mode SNP \
             -tranches-file ${vcf.baseName}.recalibrated_SNP.tranches \
             -O ${vcf.baseName}.recalibrated_SNP.recal
-        # Apply VQSR for SNPs
         gatk ApplyVQSR \
             -R "\${genomeFasta}" \
             -V ${vcf} \
@@ -97,7 +99,6 @@ process variantRecalibrator {
             -recal-file ${vcf.baseName}.recalibrated_SNP.recal \
             -mode SNP \
             -O ${vcf.baseName}.output_SNP.vcf
-        # stricter parameters for INDELs
         gatk VariantRecalibrator \
             -R "\${genomeFasta}" \
             -V ${vcf} \
@@ -106,7 +107,6 @@ process variantRecalibrator {
             -mode INDEL \
             -tranches-file ${vcf.baseName}.recalibrated_INDEL.tranches \
             -O ${vcf.baseName}.recalibrated_INDEL.recal
-        # Apply VQSR for INDELs
         gatk ApplyVQSR \
             -R "\${genomeFasta}" \
             -V ${vcf} \
