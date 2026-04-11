@@ -5,9 +5,7 @@ process filterVCF {
         label 'process_medium'
     }
     container 'variantvalidator/gatk4:4.3.0.0'
-
     tag "$vcfFile"
-
     publishDir("$params.outdir/VCF", mode: "copy")
 
     input:
@@ -22,13 +20,21 @@ process filterVCF {
     """
     echo "Running Variant Filtration for Sample: ${vcfFile}"
 
-    if [[ -n "${params.genome_file}" ]]; then
-        genomeFasta=\$(basename ${params.genome_file})
-    else
-        genomeFasta=\$(find -L . -name '*.fasta')
+    # Find fasta using find instead of basename
+    genomeFasta=\$(find -L . -name '*.fasta' | head -1)
+    echo "Genome File: \${genomeFasta}"
+
+    # Generate fai index if it doesn't exist
+    if [ ! -f "\${genomeFasta}.fai" ]; then
+        echo "Generating fasta index..."
+        samtools faidx "\${genomeFasta}"
     fi
 
-    echo "Genome File: \${genomeFasta}"
+    # Generate dict if it doesn't exist
+    if [ ! -f "\${genomeFasta%.*}.dict" ]; then
+        echo "Generating sequence dictionary..."
+        gatk CreateSequenceDictionary -R "\${genomeFasta}"
+    fi
 
     if [[ -e "\${genomeFasta}.dict" ]]; then
         mv "\${genomeFasta}.dict" "\${genomeFasta%.*}.dict"
