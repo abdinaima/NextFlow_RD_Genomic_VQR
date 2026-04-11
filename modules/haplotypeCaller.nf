@@ -1,6 +1,3 @@
-// Use newest nextflow dsl
-nextflow.enable.dsl = 2
-
 process haplotypeCaller {
     if (params.platform == 'local') {
         label 'process_low'
@@ -8,8 +5,7 @@ process haplotypeCaller {
         label 'process_high'
     }
     container 'variantvalidator/gatk4:4.3.0.0'
-
-    tag "$bamFile"
+    tag "$sample_id"
 
     input:
     tuple val(sample_id), file(bamFile), file(bamIndex)
@@ -22,13 +18,21 @@ process haplotypeCaller {
     """
     echo "Running HaplotypeCaller for Sample: ${bamFile}"
 
-    if [[ -n ${params.genome_file} ]]; then
-        genomeFasta=\$(basename ${params.genome_file})
-    else
-        genomeFasta=\$(find -L . -name '*.fasta')
+    # Find fasta using find instead of basename
+    genomeFasta=\$(find -L . -name '*.fasta' | head -1)
+    echo "Genome File: \${genomeFasta}"
+
+    # Generate fai index if it doesn't exist
+    if [ ! -f "\${genomeFasta}.fai" ]; then
+        echo "Generating fasta index..."
+        samtools faidx "\${genomeFasta}"
     fi
 
-    echo "Genome File: \${genomeFasta}"
+    # Generate dict if it doesn't exist
+    if [ ! -f "\${genomeFasta%.*}.dict" ]; then
+        echo "Generating sequence dictionary..."
+        gatk CreateSequenceDictionary -R "\${genomeFasta}"
+    fi
 
     # Rename the dictionary file to the expected name if it exists
     if [[ -e "\${genomeFasta}.dict" ]]; then
@@ -51,4 +55,3 @@ process haplotypeCaller {
     echo "Variant Calling for Sample: ${sample_id} Complete"
     """
 }
-
