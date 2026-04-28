@@ -177,7 +177,7 @@ workflow {
 
     } else if (params.variant_caller == "octopus") {
         // Octopus bypasses GATK GVCF workflow
-        octopus_ch = octopusCaller(bqsr_ch, genome_fasta_ch)
+        octopus_ch = octopusCaller(bqsr_ch, genome_fasta_file_ch, genome_fasta_ch)
         final_vcf_ch = indexOctopusVCF(octopus_ch)
     }
 
