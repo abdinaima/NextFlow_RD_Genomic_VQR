@@ -83,6 +83,10 @@ workflow {
     }
 
     // Stage fasta and ALL its index files together
+    // Single fasta file — used as -R reference in octopusCaller
+    genome_fasta_file_ch = Channel.fromPath(params.genome_file)
+
+    // All genome files (fasta + .fai + .dict) — stages index files into work dir
     genome_fasta_ch = Channel.fromPath("${params.genome_file}*").collect()
 
     // Create qsrc_vcf_ch channel
