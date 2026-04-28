@@ -5,17 +5,17 @@ process octopusCaller {
     } else if (params.platform == 'cloud') {
         label 'process_high'
     }
-
     container 'dancooke/octopus:0.7.4'
     
-    tag "$sample_id" 
+    tag "$sample_id"
 
     input:
     tuple val(sample_id), path(bam), path(bai)
-    path genome_fasta
+    path genome_fasta       // single fasta file — used as -R reference
+    path genome_all_files   // all genome files (fasta + .fai + .dict) staged into work dir
 
     output:
-    tuple val(sample_id), path("${sample_id}.vcf")  
+    tuple val(sample_id), path("${sample_id}.vcf")
 
     script:
     """
@@ -23,14 +23,12 @@ process octopusCaller {
     echo "BAM: ${bam}"
     echo "REF: ${genome_fasta}"
 
-    # Generate fai if missing
-    if [ ! -f "${genome_fasta}.fai" ]; then
-        samtools faidx "${genome_fasta}"
-    fi
+    # Debug: confirm all expected files are staged
+    ls -lh .
 
     octopus \\
         -R "${genome_fasta}" \\
-        -I "${bam}" \\
+        --reads "${bam}" \\
         -o "${sample_id}.vcf"
 
     echo "Octopus complete: ${sample_id}.vcf"
@@ -38,31 +36,25 @@ process octopusCaller {
 }
 
 process indexOctopusVCF {
-
     if (params.platform == 'local') {
         label 'process_low'
     } else if (params.platform == 'cloud') {
         label 'process_high'
     }
-
-    container 'variantvalidator/gatk4:4.3.0.0'  
-
+    container 'variantvalidator/gatk4:4.3.0.0'
     tag "$sample_id"
-
-    publishDir("$params.outdir/VCF", mode: "copy")  
+    publishDir("$params.outdir/VCF", mode: "copy")
 
     input:
     tuple val(sample_id), path(vcf)
 
     output:
-    tuple val(sample_id), path("${sample_id}.vcf"), path("${sample_id}.vcf.idx")  
+    tuple val(sample_id), path("${sample_id}.vcf"), path("${sample_id}.vcf.idx")
 
     script:
     """
     echo "Indexing Octopus VCF for sample: ${sample_id}"
-
     gatk IndexFeatureFile -I "${sample_id}.vcf"
-
     echo "Indexing complete: ${sample_id}.vcf.idx"
     """
 }
