@@ -82,12 +82,9 @@ workflow {
         indexed_genome_ch = Channel.fromPath(params.genome_index_files)
     }
 
-    // Stage fasta and ALL its index files together
-    // Single fasta file — used as -R reference in octopusCaller
-    genome_fasta_file_ch = Channel.fromPath(params.genome_file)
-
-    // All genome files (fasta + .fai + .dict) — stages index files into work dir
+    // All genome files (fasta + .fai + .dict) — staged together into work dir
     genome_fasta_ch = Channel.fromPath("${params.genome_file}*").collect()
+   
 
     // Create qsrc_vcf_ch channel
     qsrc_vcf_ch = Channel.fromPath(params.qsrVcfs)
@@ -177,7 +174,7 @@ workflow {
 
     } else if (params.variant_caller == "octopus") {
         // Octopus bypasses GATK GVCF workflow
-        octopus_ch = octopusCaller(bqsr_ch, genome_fasta_file_ch, genome_fasta_ch)
+        octopus_ch = octopusCaller(bqsr_ch, genome_fasta_ch)
         final_vcf_ch = indexOctopusVCF(octopus_ch)
     }
 
