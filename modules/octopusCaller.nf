@@ -11,23 +11,22 @@ process octopusCaller {
 
     input:
     tuple val(sample_id), path(bam), path(bai)
-    path genome_fasta       // single fasta file — used as -R reference
-    path genome_all_files   // all genome files (fasta + .fai + .dict) staged into work dir
+    path genome_all_files   // fasta + .fai + .dict all staged together
 
     output:
     tuple val(sample_id), path("${sample_id}.vcf")
 
     script:
     """
+    # Find the fasta in the staged files
+    genome_fasta=\$(find . -maxdepth 1 -name '*.fasta' | head -1)
     echo "Running Octopus for sample: ${sample_id}"
     echo "BAM: ${bam}"
-    echo "REF: ${genome_fasta}"
-
-    # Debug: confirm all expected files are staged
+    echo "REF: \${genome_fasta}"
     ls -lh .
 
     octopus \\
-        -R "${genome_fasta}" \\
+        -R "\${genome_fasta}" \\
         --reads "${bam}" \\
         -o "${sample_id}.vcf"
 
